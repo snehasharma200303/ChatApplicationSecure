@@ -16,7 +16,9 @@ export default function ChatWindow({ token }) {
      SOCKET CONNECT + ROOM JOIN
   ----------------------------------*/
   useEffect(() => {
-    socketRef.current = io('http://localhost:5000')
+    console.log(import.meta.env.VITE_SOCKET_URL)
+
+    socketRef.current = io(import.meta.env.VITE_SOCKET_URL);
 
     if (token) {
       socketRef.current.emit('join-room', token)

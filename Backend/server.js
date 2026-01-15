@@ -13,7 +13,7 @@ const io = new Server(server, {
     origin: '*',
     methods: ['GET', 'POST'],
   },
-})
+});
 
 // Socket logic
 io.on('connection', (socket) => {
