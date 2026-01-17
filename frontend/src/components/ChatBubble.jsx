@@ -5,27 +5,33 @@ export default function ChatBubble({ mine, text, file, time, sender }) {
         mine ? 'bg-brand-600 text-white rounded-br-sm' : 'bg-gray-100 text-gray-900 dark:bg-gray-800 dark:text-gray-100 rounded-bl-sm'
       }`}>
         
-        {/* Render Image */}
-        {file?.type === 'image' && (
-          <div className="mb-2 overflow-hidden rounded-xl">
-            <img src={file.preview} alt="Shared" className="max-h-60 w-full object-contain" />
-          </div>
-        )}
 
-        {/* Render File Link */}
-        {file?.type === 'file' && (
-          <a 
-            href={file.preview} 
-            download={file.name}
-            className="mb-2 flex items-center gap-3 rounded-xl bg-black/10 p-3 transition hover:bg-black/20"
-          >
-            <span className="text-2xl">📄</span>
-            <div className="flex-1 overflow-hidden">
-              <p className="truncate text-xs font-bold">{file.name}</p>
-              <p className="text-[10px] opacity-70 underline">Click to download</p>
-            </div>
-          </a>
-        )}
+       {/* Render Image (Base64) */}
+{file?.data && file.type?.startsWith('image') && (
+  <div className="mb-2 overflow-hidden rounded-xl">
+    <img
+      src={file.data}
+      alt={file.name}
+      className="max-h-60 w-full object-contain"
+    />
+  </div>
+)}
+
+{/* Render Non-Image File (Base64 Download) */}
+{file?.data && !file.type?.startsWith('image') && (
+  <a
+    href={file.data}
+    download={file.name}
+    className="mb-2 flex items-center gap-3 rounded-xl bg-black/10 p-3 transition hover:bg-black/20"
+  >
+    <span className="text-2xl">📄</span>
+    <div className="flex-1 overflow-hidden">
+      <p className="truncate text-xs font-bold">{file.name}</p>
+      <p className="text-[10px] opacity-70 underline">Click to download</p>
+    </div>
+  </a>
+)}
+
 
         {text && <div className="whitespace-pre-wrap leading-relaxed">{text}</div>}
         

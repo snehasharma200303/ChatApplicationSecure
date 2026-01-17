@@ -3,35 +3,37 @@ import { useEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import ChatBubble from './ChatBubble'
 import MessageInput from './MessageInput'
-import TypingIndicator from './TypingIndicator'
 
 export default function ChatWindow({ token }) {
   const socketRef = useRef(null)
   const scrollRef = useRef(null)
 
   const [messages, setMessages] = useState([])
-  const [typing, setTyping] = useState(false)
 
   /* --------------------------------
      SOCKET CONNECT + ROOM JOIN
   ----------------------------------*/
   useEffect(() => {
-    console.log(import.meta.env.VITE_SOCKET_URL)
+  if (!token) return;
 
-    socketRef.current = io(import.meta.env.VITE_SOCKET_URL);
+  socketRef.current = io(import.meta.env.VITE_SOCKET_URL, {
+    transports: ['websocket'],
+  });
 
-    if (token) {
-      socketRef.current.emit('join-room', token)
-    }
+  socketRef.current.emit('join-room', token);
 
-    socketRef.current.on('receive-message', (message) => {
-      setMessages((prev) => [...prev, message])
-    })
+  socketRef.current.on('receive-message', (message) => {
+    setMessages((prev) => [...prev, message]);
+  });
 
-    return () => {
-      socketRef.current.disconnect()
-    }
-  }, [token])
+  return () => {
+  if (socketRef.current) {
+    socketRef.current.off('receive-message');
+    socketRef.current.disconnect();
+  }
+  };
+}, [token]);
+
 
   /* --------------------------------
      AUTO SCROLL
@@ -43,34 +45,36 @@ export default function ChatWindow({ token }) {
         behavior: 'smooth',
       })
     }
-  }, [messages, typing])
+  }, [messages])
+
 
   /* --------------------------------
      SEND MESSAGE (STEP-4 ✅)
   ----------------------------------*/
-  const sendMessage = (text, fileData) => {
-    if (!text.trim() && !fileData) return
+ const sendMessage = (text, fileData) => {
+  if (!text.trim() && !fileData) return;
 
-    const message = {
-      id: Date.now(),
-      text,
-      file: fileData,
-      time: new Date().toLocaleTimeString([], {
-        hour: '2-digit',
-        minute: '2-digit',
-      }),
-      mine: true,
-    }
+  const message = {
+    id: Date.now(),
+    text,
+    file: fileData,
+    time: new Date().toLocaleTimeString([], {
+      hour: '2-digit',
+      minute: '2-digit',
+    }),
+    mine: true,
+  };
 
-    // show instantly
-    setMessages((prev) => [...prev, message])
+  // show instantly on sender
+  setMessages((prev) => [...prev, message]);
 
-    // send to backend
-    socketRef.current.emit('send-message', {
-      roomId: token,
-      message: { ...message, mine: false },
-    })
-  }
+  // send to backend for other user
+  socketRef.current.emit('send-message', {
+    roomId: token,
+    message: { ...message, mine: false },
+  });
+};
+
 
   return (
     <section className="card flex h-full flex-col border border-gray-100 bg-white/50 shadow-soft dark:border-gray-800 dark:bg-gray-900/50">
@@ -134,8 +138,6 @@ export default function ChatWindow({ token }) {
             </motion.div>
           ))}
         </AnimatePresence>
-
-        {typing && <TypingIndicator name="Peer" />}
       </div>
 
       {/* INPUT */}

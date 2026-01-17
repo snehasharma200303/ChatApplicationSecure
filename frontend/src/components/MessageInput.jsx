@@ -12,6 +12,9 @@ export default function MessageInput({ onSend }) {
   const imageInputRef = useRef(null);
   const docInputRef = useRef(null);
 
+ 
+
+
   const submit = (e) => {
     e.preventDefault();
     if (!value.trim() && !selectedFile) return;
@@ -24,19 +27,39 @@ export default function MessageInput({ onSend }) {
     setOpen(false);
   };
 
-  const onFiles = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      const previewUrl = URL.createObjectURL(file);
-      setSelectedFile({
-        file,
-        name: file.name,
-        type: file.type.startsWith('image/') ? 'image' : 'file',
-        preview: previewUrl
-      });
-    }
-    setOpen(false);
-  };
+
+   // ADD this helper function at top (inside file)
+const fileToBase64 = (file) => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+};
+
+const onFiles = async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  // size limit (2MB recommended)
+  if (file.size > 2 * 1024 * 1024) {
+    alert("File size must be under 2MB");
+    return;
+  }
+
+  const base64 = await fileToBase64(file);
+
+  setSelectedFile({
+    name: file.name,
+    type: file.type,
+    data: base64, // 🔥 THIS is what will be sent
+  });
+e.target.value = null;
+
+  setOpen(false);
+};
+
 
   const handleEmojiSelect = (emoji) => {
     setValue((prev) => prev + emoji);
@@ -48,8 +71,12 @@ export default function MessageInput({ onSend }) {
       {/* 1. MEDIA PREVIEW */}
       {selectedFile && (
         <div className="mb-2 flex items-center gap-3 rounded-xl bg-gray-50 p-2 dark:bg-gray-800/50 border border-gray-100 dark:border-gray-700">
-          {selectedFile.type === 'image' ? (
-            <img src={selectedFile.preview} className="h-12 w-12 rounded-lg object-cover" alt="preview" />
+        {selectedFile.type?.startsWith('image') ? (
+           <img
+  src={selectedFile.data}
+  className="h-12 w-12 rounded-lg object-cover"
+  alt="preview"
+/>
           ) : (
             <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-brand-100 text-2xl">📄</div>
           )}
