@@ -15,8 +15,12 @@ export default function ChatDashboard() {
     setGeneratedToken(newToken);
   };
 
-  const BASE_URL = import.meta.env.VITE_APP_URL;
-  const shareableLink = `${BASE_URL}/chat/${generatedToken}`;
+  const BASE_URL =
+  import.meta.env.VITE_APP_URL || window.location.origin;
+
+const shareableLink = generatedToken
+  ? `${BASE_URL}/chat/${generatedToken}`
+  : "";
 
   const copyToClipboard = () => {
     navigator.clipboard.writeText(shareableLink);
