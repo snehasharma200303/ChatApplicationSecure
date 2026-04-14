@@ -12,12 +12,9 @@ export default function MessageInput({ onSend }) {
   const imageInputRef = useRef(null);
   const docInputRef = useRef(null);
 
- 
-
-
   const submit = (e) => {
     e.preventDefault();
-    if (!value.trim() && !selectedFile) return;
+    if (!value.trim() && !selectedFile?.data) return;
 
     onSend(value, selectedFile);
     
@@ -53,7 +50,7 @@ const onFiles = async (e) => {
   setSelectedFile({
     name: file.name,
     type: file.type,
-    data: base64, // 🔥 THIS is what will be sent
+    data: base64, //  THIS is what will be sent
   });
 e.target.value = null;
 
