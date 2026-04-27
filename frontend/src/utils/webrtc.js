@@ -3,7 +3,14 @@
 export const createPeerConnection = (socket, roomId, onTrack) => {
   const peer = new RTCPeerConnection({
     iceServers: [
-      { urls: "stun:stun.l.google.com:19302" } // 🔥 required
+      { urls: "stun:stun.l.google.com:19302" },
+
+      // 🔥 ADD THIS (VERY IMPORTANT)
+      {
+        urls: "turn:openrelay.metered.ca:80",
+        username: "openrelayproject",
+        credential: "openrelayproject",
+      }
     ]
   });
 
