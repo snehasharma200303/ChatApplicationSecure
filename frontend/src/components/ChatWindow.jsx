@@ -1,3 +1,5 @@
+import { createPeerConnection, getMediaStream } from '../utils/webrtc'
+import VideoCallWindow from './VideoCallWindow'
 import { io } from 'socket.io-client'
 import { useEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
@@ -7,145 +9,255 @@ import MessageInput from './MessageInput'
 export default function ChatWindow({ token }) {
   const socketRef = useRef(null)
   const scrollRef = useRef(null)
+  const peerRef = useRef(null)
 
   const [messages, setMessages] = useState([])
 
-  /* --------------------------------
-     SOCKET CONNECT + ROOM JOIN
-  ----------------------------------*/
-  useEffect(() => {
-  if (!token) return;
+  // CALL STATES
+  const [incomingCall, setIncomingCall] = useState(null)
+  const [stream, setStream] = useState(null)
+  const [inCall, setInCall] = useState(false)
+  const [remoteStream, setRemoteStream] = useState(null)
 
-  socketRef.current = io(import.meta.env.VITE_SOCKET_URL, {
-    transports: ['websocket'],
+  /* ---------------- SOCKET ---------------- */
+useEffect(() => {
+  if (!token) return
+
+socketRef.current = io(import.meta.env.VITE_SOCKET_URL)
+
+socketRef.current.on("connect", () => {
+  console.log("✅ SOCKET CONNECTED:", socketRef.current.id)
+
+  socketRef.current.emit('join-room', token)
+
+})
+  socketRef.current.on('ice-candidate', async ({ candidate }) => {
+    try {
+      console.log("ADDING ICE");
+
+      if (peerRef.current && candidate) {
+        await peerRef.current.addIceCandidate(
+          new RTCIceCandidate(candidate)
+        );
+      }
+    } catch (err) {
+      console.error("ICE ERROR:", err);
+    }
   });
 
-  socketRef.current.emit('join-room', token);
-
+  // MESSAGE
   socketRef.current.on('receive-message', (message) => {
-    setMessages((prev) => [...prev, message]);
-  });
+    setMessages((prev) => [...prev, message])
+  })
+
+  // CALL EVENTS
+  socketRef.current.on('incoming-call', ({ offer }) => {
+    console.log("📞 INCOMING CALL RECEIVED") // ADD
+    setIncomingCall(offer)
+  })
+
+  socketRef.current.on('call-accepted', async ({ answer }) => {
+    console.log("CALL ACCEPTED") //  ADD
+
+    if (peerRef.current) {
+      await peerRef.current.setRemoteDescription(answer)
+    }
+  })
+
+  socketRef.current.on('call-ended', () => {
+    console.log(" CALL ENDED") // 🔥 ADD
+    endCall()
+  })
+
+  // 🔥 ADD THIS (VERY IMPORTANT FOR DEBUGGING ROOM ISSUE)
+  socketRef.current.on('user-joined', (id) => {
+    console.log(" USER JOINED:", id)
+  })
 
   return () => {
-  if (socketRef.current) {
-    socketRef.current.off('receive-message');
-    socketRef.current.disconnect();
+    socketRef.current?.disconnect()
   }
-  };
-}, [token]);
+}, [token])
 
-
-  /* --------------------------------
-     AUTO SCROLL
-  ----------------------------------*/
+  /* ---------------- AUTO SCROLL ---------------- */
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTo({
-        top: scrollRef.current.scrollHeight,
-        behavior: 'smooth',
-      })
-    }
+    scrollRef.current?.scrollTo({
+      top: scrollRef.current.scrollHeight,
+      behavior: 'smooth',
+    })
   }, [messages])
 
+  /* ---------------- SEND MESSAGE ---------------- */
+  const sendMessage = (text, fileData) => {
+    if ((!text || text.trim() === '') && !fileData) return
 
-  /* --------------------------------
-     SEND MESSAGE (STEP-4 ✅)
-  ----------------------------------*/
- const sendMessage = (text, fileData) => {
-  if (!text.trim() && !fileData) return;
+    const message = {
+      id: Date.now(),
+      text: text || '',
+      file: fileData,
+      time: new Date().toLocaleTimeString([], {
+        hour: '2-digit',
+        minute: '2-digit',
+      }),
+      mine: true,
+    }
 
-  const message = {
-    id: Date.now(),
-    text,
-    file: fileData,
-    time: new Date().toLocaleTimeString([], {
-      hour: '2-digit',
-      minute: '2-digit',
-    }),
-    mine: true,
-  };
+    setMessages((prev) => [...prev, message])
 
-  // show instantly on sender
-  setMessages((prev) => [...prev, message]);
+    socketRef.current.emit('send-message', {
+      roomId: token,
+      message: {
+        id: message.id,
+        text: message.text,
+        file: message.file,
+        time: message.time,
+        mine: false,
+      },
+    })
+  }
 
-  // send to backend for other user
-  socketRef.current.emit('send-message', {
+  /* ---------------- CALL FUNCTIONS ---------------- */
+
+const startCall = async () => {
+  setInCall(true) //  important
+
+  console.log(" CALL BUTTON CLICKED") 
+  console.log("ROOM ID:", token) 
+  console.log(" EMIT DONE");
+
+  const mediaStream = await getMediaStream(true)
+  setStream(mediaStream)
+
+  const newPeer = createPeerConnection(
+    socketRef.current,
+    token,
+    (remoteStream) => {
+      console.log("REMOTE STREAM RECEIVED")
+      setRemoteStream(remoteStream)
+    }
+  )
+
+  mediaStream.getTracks().forEach((track) => {
+    newPeer.addTrack(track, mediaStream)
+  })
+
+  const offer = await newPeer.createOffer()
+  await newPeer.setLocalDescription(offer)
+
+  console.log(" SENDING CALL TO BACKEND") //  ADD
+
+  socketRef.current.emit('call-user', {
     roomId: token,
-    message: { ...message, mine: false },
-  });
-};
+    offer,
+  })
 
+  peerRef.current = newPeer
+}
+
+  const acceptCall = async () => {
+    setInCall(true) //  important
+
+    const mediaStream = await getMediaStream(true)
+    setStream(mediaStream)
+
+    const newPeer = createPeerConnection(
+      socketRef.current,
+      token,
+      (remoteStream) => {
+  console.log("REMOTE STREAM RECEIVED")
+  setRemoteStream(remoteStream)
+}
+    )
+
+    mediaStream.getTracks().forEach((track) => {
+      newPeer.addTrack(track, mediaStream)
+    })
+
+    await newPeer.setRemoteDescription(incomingCall)
+
+    const answer = await newPeer.createAnswer()
+    await newPeer.setLocalDescription(answer)
+
+    socketRef.current.emit('call-accepted', {
+      roomId: token,
+      answer,
+    })
+
+    peerRef.current = newPeer
+    setIncomingCall(null)
+  }
+
+  const rejectCall = () => {
+    socketRef.current.emit('reject-call', { roomId: token })
+    setIncomingCall(null)
+  }
+
+  const endCall = () => {
+    peerRef.current?.close()
+
+    stream?.getTracks().forEach((track) => track.stop())
+
+    socketRef.current.emit('end-call', { roomId: token })
+
+    peerRef.current = null
+    setStream(null)
+    setInCall(false)
+  }
 
   return (
     <section className="card flex h-full flex-col border border-gray-100 bg-white/50 shadow-soft dark:border-gray-800 dark:bg-gray-900/50">
-      
+    {inCall && (
+      <VideoCallWindow
+        stream={stream}
+        remoteStream={remoteStream}
+        onEndCall={endCall}
+      />
+    )}
+
       {/* HEADER */}
-      <div className="flex items-center justify-between border-b border-gray-100 bg-white/80 px-6 py-4 dark:border-gray-800 dark:bg-gray-900/80">
-        <div className="flex items-center gap-3">
-          <div className="relative flex h-3 w-3">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75"></span>
-            <span className="relative inline-flex h-3 w-3 rounded-full bg-green-500"></span>
-          </div>
+      <div className="flex items-center justify-between border-b px-6 py-4">
+        <h2 className="font-bold">Secure Conversation</h2>
 
-          <div>
-            <h2 className="text-sm font-bold text-gray-900 dark:text-white">
-              Secure Conversation
-            </h2>
-            <p className="text-[10px] uppercase tracking-widest text-gray-400">
-              Session: {token?.substring(0, 8)}...
-            </p>
-          </div>
-        </div>
-
-        <div className="rounded-full bg-gray-100 px-3 py-1 dark:bg-gray-800">
-          <span className="text-[10px] font-bold text-gray-600 dark:text-gray-400">
-            MEMORY ONLY
-          </span>
-        </div>
+        <button
+          onClick={startCall}
+          className="rounded-lg bg-blue-500 px-3 py-1 text-white text-xs"
+        >
+          🎥 Call
+        </button>
       </div>
+
+      {/* INCOMING CALL */}
+      {incomingCall && (
+        <div className="mx-6 mt-3 rounded-xl bg-yellow-100 p-3 text-center">
+          <p className="text-sm font-bold">📞 Incoming Call</p>
+          <div className="mt-2 flex justify-center gap-2">
+            <button onClick={acceptCall} className="bg-green-500 px-3 py-1 text-white rounded">
+              Accept
+            </button>
+            <button onClick={rejectCall} className="bg-red-500 px-3 py-1 text-white rounded">
+              Reject
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* MESSAGES */}
       <div
         ref={scrollRef}
-        className="flex-1 space-y-4 overflow-y-auto px-6 py-6 scrollbar-hide"
+        className="flex-1 overflow-y-auto px-6 py-6"
       >
-        {messages.length === 0 && (
-          <div className="flex h-full flex-col items-center justify-center text-center opacity-40">
-            <div className="mb-4 text-4xl">🛡️</div>
-            <p className="text-sm">
-              Start a conversation.
-              <br />
-              History is wiped on refresh.
-            </p>
-          </div>
-        )}
-
-        <AnimatePresence initial={false}>
+        <AnimatePresence>
           {messages.map((m) => (
-            <motion.div
-              key={m.id}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.2 }}
-            >
-              <ChatBubble
-                mine={m.mine}
-                text={m.text}
-                file={m.file}
-                time={m.time}
-                sender={m.mine ? 'Me' : 'Peer'}
-              />
+            <motion.div key={m.id}>
+              <ChatBubble {...m} sender={m.mine ? 'Me' : 'Peer'} />
             </motion.div>
           ))}
         </AnimatePresence>
       </div>
 
       {/* INPUT */}
-      <div className="border-t border-gray-100 bg-white/80 p-4 dark:border-gray-800 dark:bg-gray-900/80">
+      <div className="border-t p-4">
         <MessageInput onSend={sendMessage} />
-        <p className="mt-2 text-center text-[10px] text-gray-400">
-          Messages are never stored on a server or database.
-        </p>
       </div>
     </section>
   )
